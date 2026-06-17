@@ -1,0 +1,1086 @@
+---
+title: "Request by Alexander Braun from 18-Feb-2026"
+subtitle: "Interrupted Time Series - Segmented linear regression // Nonparametric regression"
+author: "Claus P. Nowak"
+date: now
+date-format: "D MMMM YYYY"
+format: 
+   pdf:
+     geometry: landscape
+ # docx
+ # html:
+ #   toc: true
+ #   # toc-depth: 2
+ #   self-contained: true
+ #   df-print: paged
+#editor: visual
+---
+
+<!-- Project:    UWK -->
+
+<!-- File:       ITS_20260218_v02.qmd -->
+
+<!-- Author:     CNowak -->
+
+<!-- Date:       19-Jun-2026 -->
+
+<!-- Purpose:    Perform ITS analysis and nonparameteric regression as requested by Alexander Braun -->
+
+# Preliminary/Which data do I use?
+
+**Update 17-Jun-2026**. Based on the reviewer comments from 15 June 2026, we were asked to
+  
+  -   run the regression again excluding weekends as a robustness check
+      -   use weekend ED admission rates to check the plausibility of their estimated counterfactual trend,
+  -   perform an additional analysis distinguishing between visits during the opening hours of the PHCC, 
+      -   that is, when it was actually available as a substitute. 
+
+In this regard, I have performed the ITS and the nonparametric trend analysis again, treating Saturdays and Sundays as missing values, i.e., I have deleted the corresponding rows from the data set. Conversely, I have also deleted all weekdays (Monday - Friday), i.e., only kept the rows with Saturdays and Sundays and performed the ITS and the nonparametric trend analysis on that reduced data set.
+
+As part of the descriptive analysis, I have included average daily visits and yearly visits by day of the week. Moreover, I have included average daily visits by day of the week and whether the the PHCC was open or not (`PVE_open`). In addition, I have also performed a nonparametric trend series estimation for visits during the PPHC opening hours only.
+
+**Update 13-Apr-2026**. Based on the manuscript from Alexander Braun (received by e-mail on 8-Apr-2026 at 18:17), I have added some additional computations.
+
+**Update 03-Apr-2026**. Alexander Braun sent me an email at 09:08 with the request to add three robustness checks.
+
+  -   Eine Variation des Interruptionpoints +/- 1 Monat und einen mit 1.1.2025
+  -   Evtl. einer anderen Autokorrelationsannahme (Ar(2))?
+  -   Einer parametrischen Schätzung mit den Monatswerten? (Vermutlich geht da die Influenzaadjustierung nicht)
+
+**Update 24-Mar-2026**. Alexander Braun sent me an email at 10:47 with a link to the complete data set, which I downloaded from <https://donauuni.sharepoint.com/:x:/s/EbVF/IQAin0Q910FBTJlyLZaEDy60AXy2zfBWdV3r7PPKEvXKc8U?e=D2RyRy> on 25-Mar-2026 at 09:05. In his email he explained/requested
+
+-   In Patient Age sind 16 unplausible Werte (Geburtsdatum nach Aufnahme), ich habe die Werte aus Patient_Age herausgenommen.
+-   Es gibt einige doppelte Fälle, die komplett identisch sind. Kannst Du die identifizieren und nur einmal zählen?
+-   PVE_Open ist nun angepasst. Nur WAHRE Fälle sind bezeichnet mit WAHR (dort wo es das Zentrum nicht gab oder keine Öffnungszeit war, ist die Zelle leer)
+-   Für die ITSA wären drei Tabellen vorgesehen + die Grafiken (einmal parametric und einmal non-parametric und evtl. in der X-Achse die Jahreszahlen anstatt die laufenden Tage).
+
+**Update 11-Mar-2026**. Veronika Boskova gave me an article by
+
+-   Kovacevic et al. (2025). **The impact of primary care networks on emergency hospitalisations in the English NHS: An interrupted time series analysis**. Health policy. <https://doi.org/10.1016/j.healthpol.2025.105524>.
+
+I have some doubts as to whether this approach is preferable because of overfitting issues. It is my understanding that they have essentially 26 data points (quarters) in total and model two interruptions and seasonality as binary dummy variables on top.
+
+**Update 04-Mar-2026**. Further to today's meeting with Alexander Braun, I incorporate the possibility of a different intercept during influenza season in the ITS equation.
+
+**17-Feb-2026**. I received an email from Alexander Braun with a request to perform an Interrupted Time Series Analysis. I used the data as downloaded from MS Teams <https://donauuni.sharepoint.com/:x:/s/EbVF/IQCYSk6ZYf8eQoPEiYvG5FNEAc0cXjS0hHeHlnqnSbAXgM4?e=pjcRSb> on 18-Feb-2026 at 08:52 (CET).
+
+This was part of his email:
+
+-   Uns geht es darum herauszufinden, ob das neugegründete Primärversorgungszentrum (Öffnung am 1.1.2024) Auswirkungen auf die Notfallbehandlungen im Spital Wiener Neustadt hatten (Jede Zeile ist eine gesonderte Aufnahme).
+
+-   Unsere Überlegung dazu war eine ITSA zu berechnen. Wir denken, dass folgende Prädiktoren Auswirkung haben könnten:
+
+    -   Ist das PVZ offen (also vorher-nachher und wenn es eröffnet hat, ob Wochenende/Öffnungszeiten ist („Spalte H: PVE_Open“)
+        -   Based on previous emails the interruption in the time series (PVE-Eröffnung occurred on 01-Jan-2024).
+    -   das Alter (Spalte I Patient_Birth_year)
+    -   das Geschlecht („Spalte L (M/W“)
+    -   Schweregrad entlang des Manchester-Triage-Systems (vermutlich eher Prio 3 und 4, da diese vermutlich auch in PVE behandelt werden können (z.B. Schnittwunden,…)
+    -   Ob gerade Grippesaison ist oder nicht (Spalte N: Influenza)
+
+-   Ich würde weiters die These aufstellen, dass die Tage von Weihnachten bis Neujahr ebenfalls einen Einfluss hat (Christmas Shock oder wie auch immer man das nennen möchte, zumindest gibt es dazu Literatur).
+
+-   Kannst Du damit was anfangen? Ich glaube zu komplex ist das gar nicht, aber ich habe dir ja gezeigt, dass diese Zeit um die Eröffnung halt sehr fuzzy ist, das wir mit Influenza allein nicht erklären konnten. Vielleicht hast Du dazu eine Idee? Ich würde mich freuen, wenn Du mir dabei hilfst.
+
+# General Comments from Claus
+
+**Interrupted Time Series.** For the interrupted time series analysis I used the model by Korevaar et al. (see <https://tinyurl.com/its-meta-analysis-workshop>).
+
+$$ y_t = \beta_0 + \beta_1 t+\beta_2I_t+\beta_3(t-T)I_t +\varepsilon_t,$$
+
+where
+
+-   $y_t$ is the number of hospital admissions at day $t=1,..,n$;
+-   $T$ is the interruption day, in our case $T=731$,
+-   $I_t$ is an indicator variable which takes 0 before the interruption, i.e., if $t < T$, and 1 otherwise,
+-   $\varepsilon_t$ are modelled as autocorrelated errors of order 1.
+
+Note that this approach might not be ideal because $y_t$ are count data so arguably a GLMM with a negative binomial distribution might be more appropriate. However, treating $y_t$ as continuous simplifies interpretation and fluctuations (at least when considering all data) do not seem to substantially deviate from normality.
+
+If we already consider Influenza, I would expect this covariate to be correlated with "Christmas" season, so I am not really sure whether it makes sense to include both in a model.
+
+The outliers seem less pronounced after removing duplicate rows.
+
+**Update 04-Mar-2026:**
+
+I include an indicator variable $F_t$ which takes 1 if the day $t$ is during the influenza season and 0 otherwise. The coefficient $\beta_4$ allows for a different intercept during the influenza season,
+
+$$ y_t = \beta_0 + \beta_1 t+\beta_2I_t+\beta_3(t-T)I_t + \beta_4F_t+\varepsilon_t,$$
+
+with the other variables remaining as before. A graphical inspection of the influenza admissions per day seems to support this approach.
+
+**Update 31-Mar-2026:** As a sensitivity analysis, I also modelled the error terms, i.e., $\varepsilon_t$ as an ARMA(1,1) process for the full data accounting for influenza.
+
+**Update 03-Apr-2026:** I also modelled the errors as AR(2) process as requested by Alexander Braun.
+
+**Nonparametric trend estimation.** In addition to the Interrupted Time Series analysis, I would recommend a semiparametric model defined by
+
+$$y_t = m(x_t) + \varepsilon_t,$$ where
+
+-   $y_t$ is the number of hospital admissions at time point (or day) $t=1,...,n$;
+-   $x_t=t/n$ denotes the rescaled time,
+-   $m$ is a smooth function representing the trend, which is estimated in a nonparametric manner,
+-   $\varepsilon_t$ is a zero mean stationary process.
+
+This method is implemented in the R package `smoots` which allows for a completely data driven selection of the optimal bandwidth while taking autocorrelation into account. See also
+
+-   Feng Y, Gries T, Letmathe S, Schulz D. The smoots Package in R for Semiparametric Modeling of Trend Stationary Time Series. *R Journal* March 2022;14/1:182-195. <https://doi.org/10.32614/rj-2022-017>.
+
+## Which packages and R version do I use?
+
+```{r}
+#| echo: TRUE
+library(tidyverse)
+library(readxl)
+library(smoots)
+library(nlme)
+library(multcomp)
+sessionInfo()
+```
+
+## How do read in the data set and get the dates for the Influenza seasons?
+
+```{r}
+#| echo: TRUE
+filename <- "C:/Users/CNowak/OneDrive - Universität für Weiterbildung Krems/Beratung/2026/AlexanderBraun_20260217/"
+
+# all_dates <- tibble(Triage_Begin_Date = seq.Date(as.Date("2022-01-01"),
+#                                                  as.Date("2025-12-31"),
+#                                                  by = "day"))
+
+addVariables <- function(dat,intday="01Jan2024"){
+  dat <- alldates |> left_join(dat,by=c("Triage_Begin_Date",
+                                        "Day",
+                                        "Month",
+                                        "Year",
+                                        "Week_Day"))
+  dat <- dat |> mutate(
+                Triage_Begin_Day=as.integer(Triage_Begin_Date - min(Triage_Begin_Date)) + 1,
+                Interruption_Day=as.integer(as.Date(x=intday,"%d%b%Y") - min(Triage_Begin_Date)) + 1,
+                Level_Change=ifelse(Triage_Begin_Day < Interruption_Day,0,1),
+                Slope_Change=ifelse(Level_Change==0,0,Triage_Begin_Day-Interruption_Day), #01Jan2024 equals Triage_Begin_Day 731
+                n=ifelse(is.na(n),0,n),
+                .after=1) 
+  return(dat)
+}
+
+addVariables2 <- function(dat,intday="01Jan2024"){
+  dat <- dat |> mutate(
+                Triage_Begin_Month=as.integer(interval(min(Triage_Begin_Date),Triage_Begin_Date) %/% months(1)) + 1,
+                Interruption_Month=as.integer(interval(min(Triage_Begin_Date),as.Date(x=intday,"%d%b%Y")) %/% months(1)) + 1,
+                Level_Change=ifelse(Triage_Begin_Month < Interruption_Month,0,1),
+                Slope_Change=ifelse(Level_Change==0,0,Triage_Begin_Month-Interruption_Month), 
+                n=ifelse(is.na(n),0,n),
+                .after=1) 
+  return(dat)
+}
+           
+weekdaylevels <- c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
+
+dat00 <- read_xlsx(str_c(filename,"MTS Daten_2022-2025_complete.xlsx"),
+                   range="A1:M84739",
+                   sheet="Daten2022-2025") |>
+         mutate(Triage_Begin_Date=as_date(Triage_Begin), .after=1) |>
+         distinct() |>
+           mutate(WD = recode(Week_Day,"Mo" = "Mon",
+                                       "Di" = "Tue",
+                                       "Mi" = "Wed",
+                                       "Do" = "Thu",
+                                       "Fr" = "Fri",
+                                       "Sa" = "Sat",
+                                       "So" = "Sun"),
+                  WD = fct_relevel(WD,weekdaylevels))
+
+alldates <- dat00 |> group_by(Triage_Begin_Date,Day,Month,Year,
+                              Week_Day) |>
+            count() |> ungroup() |>
+            dplyr::select(-n) 
+
+
+influenz <- dat00 |> dplyr::select(Triage_Begin_Date,Influenza) |>
+            filter(Influenza=="ja") |> count(Triage_Begin_Date)
+
+plot(influenz,las=1,main="Number of Influenza Admissions")
+            
+influenz |> filter(n>=30) |>
+            mutate(next_date = lead(Triage_Begin_Date),
+                   gap = as.integer(next_date - Triage_Begin_Date)) |>
+            filter(gap >= 2)
+influenz |> filter(n>=30) |> 
+            summarise(season1_start=min(Triage_Begin_Date),
+                      season4_end=max(Triage_Begin_Date))
+
+alldates <- alldates |> 
+  mutate(season1=as.integer(Triage_Begin_Date >= as.Date("2022-11-21") & Triage_Begin_Date <= as.Date("2023-04-09")),
+         season2=as.integer(Triage_Begin_Date >= as.Date("2023-11-20") & Triage_Begin_Date <= as.Date("2024-04-07")),
+         season3=as.integer(Triage_Begin_Date >= as.Date("2024-12-16") & Triage_Begin_Date <= as.Date("2025-04-20")),
+         season4=as.integer(Triage_Begin_Date >= as.Date("2025-12-11") & Triage_Begin_Date <= as.Date("2025-12-31")),
+         influenza=season1+season2+season3+season4) |> 
+  dplyr::select(-c(season1,season2,season3,season4))
+```
+
+Based on this data set I extracted the following dates for the influenza season:
+
+| Influenza | Start Date | End Date   |
+|-----------|------------|------------|
+| Season 1  | 2022-11-21 | 2023-04-09 |
+| Season 2  | 2023-11-20 | 2024-04-07 |
+| Season 3  | 2024-12-16 | 2025-04-20 |
+| Season 4  | 2025-12-11 | 2025-12-31 |
+
+# How do I get daily and monthy admissions before and after the opening of the PHC?
+
+```{r}
+#| echo: TRUE
+
+daily <- dat00 |> 
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
+         count() |>
+         mutate(PreInterruption = ifelse(Triage_Begin_Date < as.Date(x="01Jan2024","%d%b%Y"),0,1)) 
+
+
+plot(daily$Triage_Begin_Date,daily$n,
+     ylim=c(0,120),
+     las=1,
+     ylab="Number of Admissions",
+     #type="l",
+     xlab="Date",
+     main="Number of Admissions per Day")
+abline(v=as.Date(x="01Jan2024","%d%b%Y"))
+
+plot(daily$Triage_Begin_Date,daily$n,
+     ylim=c(0,120),
+     las=1,
+     ylab="Number of Admissions",
+     type="l",
+     xlab="Date",
+     main="Number of Admissions per Day")
+abline(v=as.Date(x="01Jan2024","%d%b%Y"))
+
+monthly <- dat00 |> 
+           mutate(Triage_Begin_ym=format(Triage_Begin, "%Y-%m"),
+                  Triage_Begin_ymf=floor_date(Triage_Begin_Date,unit="month"),.after=2) |>
+           group_by(Year,Triage_Begin_ymf) |>
+           count() |>
+           mutate(PreInterruption = ifelse(Triage_Begin_ymf < as.Date(x="01Jan2024","%d%b%Y"),0,1))
+
+# monthly2<- dat00 |> 
+#            mutate(Triage_Begin_ym=format(Triage_Begin, "%Y-%m"),
+#                   Triage_Begin_ymf=floor_date(Triage_Begin_Date,unit="month"),.after=2) |>
+#            group_by(Year,Triage_Begin_ymf,WD) |>
+#            count() |>
+#            mutate(PreInterruption = ifelse(Triage_Begin_ymf < as.Date(x="01Jan2024","%d%b%Y"),0,1))
+
+yearly <-  dat00 |>
+           group_by(Year) |>
+           count()
+
+yearly2 <- dat00 |>
+           group_by(Year,WD) |>
+           count()
+
+plot(monthly$Triage_Begin_ymf,monthly$n,
+     ylim=c(0,2200),
+     las=1,
+     ylab="Number of Admissions",
+     #type="l",
+     xlab="Date",
+     main="Number of Admissions per Month")
+abline(v=as.Date(x="01Jan2024","%d%b%Y"))
+
+plot(monthly$Triage_Begin_ymf,monthly$n,
+     ylim=c(0,2200),
+     las=1,
+     ylab="Number of Admissions",
+     type="l",
+     xlab="Date",
+     main="Number of Admissions per Month")
+abline(v=as.Date(x="01Jan2024","%d%b%Y"))
+
+desdaily <- daily |> group_by(PreInterruption) |>
+                     summarise(mean=mean(n),
+                               sd=sd(n),
+                               n=n())
+
+desdaily2  <- daily |> group_by(PreInterruption,WD) |>
+                       summarise(mean=mean(n),
+                                 sd=sd(n),
+                                 n=n()) 
+
+desdaily3  <- dat00 |> group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD,PVE_Open) |>
+                       count() |>
+                       mutate(PreInterruption = ifelse(Triage_Begin_Date < as.Date(x="01Jan2024","%d%b%Y"),0,1)) |>
+                       group_by(PreInterruption,WD,PVE_Open) |>
+                       summarise(mean=mean(n),
+                                 sd=sd(n),
+                                 n=n()) 
+
+desmonthly <- monthly |> group_by(PreInterruption) |>
+                         summarise(mean=mean(n),
+                         sd=sd(n),
+                         n=n())
+
+
+desdaily
+desmonthly
+yearly
+
+(desdaily$mean[2]-desdaily$mean[1])/desdaily$mean[1]*100 # change in percent
+(desmonthly$mean[2]-desmonthly$mean[1])/desmonthly$mean[1]*100 # change in percent
+
+desdaily2
+yearly2
+
+desdaily3
+```
+
+# How do I get additional results for the manuscript from 08-Apr-2026?
+
+```{r}
+#| echo: TRUE
+dat00 |> dplyr::select(Year,Patient_Age) |>
+         group_by(Year) |>
+         summarize(mean=mean(Patient_Age,na.rm=T),
+                   sd=sd(Patient_Age,na.rm=T))
+
+dat00 |> group_by(Year) |>
+         count(Prio) |>
+         mutate(Percent=round(n/sum(n)*100,2))
+  
+```
+
+# How do I get the data sets for the analyses?
+
+```{r}
+#| echo: TRUE
+datall<- dat00 |> 
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datalld<-dat00 |> 
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables(intday="01Dec2023")
+
+datallf<-dat00 |> 
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables(intday="01Feb2024")
+
+datall5<-dat00 |> 
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables(intday="01Jan2025")
+
+datallm<-dat00 |> 
+         mutate(Triage_Begin_Date = floor_date(Triage_Begin_Date,"month")) |>
+         dplyr::select(Triage_Begin_Date,Month,Year) |>
+         group_by(Triage_Begin_Date,Month,Year) |>
+         count() |> ungroup() |> addVariables2(intday="01Jan2024")
+
+####### Subgroup analyses ######
+datsem<- dat00 |> filter(Patient_Sex=="M") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datsef<- dat00 |> filter(Patient_Sex=="W") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datag12<-dat00 |>  filter(Patient_Age_Category %in% c("1","2")) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datag3<- dat00 |>  filter(Patient_Age_Category=="3") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datag4<- dat00 |>  filter(Patient_Age_Category=="4") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datag5<- dat00 |>  filter(Patient_Age_Category=="5") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datpr12<-dat00 |>  filter(Prio %in% c("1","2")) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datpr3<- dat00 |>  filter(Prio=="3") |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+datpr45<-dat00 |>  filter(Prio %in% c("4","5")) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day) |>
+         count() |> ungroup() |> addVariables()
+
+##### Add subgroup analyses for reviewer #####
+datwk  <-dat00 |>  filter(WD %in% c("Mon","Tue","Wed","Thu","Fri")) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
+         count() |> ungroup() |> addVariables() |>
+         filter(!is.na(WD))
+
+datss  <-dat00 |>  filter(WD %in% c("Sat","Sun")) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
+         count() |> ungroup() |> addVariables() |>
+         filter(!is.na(WD))
+
+datop  <-dat00 |>  filter(PVE_Open==TRUE) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
+         count() |> ungroup() |> addVariables() |>
+         filter(!is.na(WD))
+
+datopn <-dat00 |>  filter(is.na(PVE_Open)) |>
+         group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
+         count() |> ungroup() |> addVariables() |>
+         filter(Level_Change==1)
+```
+
+## Which function do I write to perform the segmented regression analysis as suggested by Korevaar et al.?
+
+```{r}
+#| echo: TRUE
+getITSresults <- function(dat0,outcome,ptitle,intday="01Jan2024"){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    corr=corAR1(form=~Triage_Begin_Day),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change),
+              model_CIs))
+  # save the CIs for display in graphs etc.
+  ####
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Day
+  
+  # for the graph we need the interruption time
+  int_time <- as.Date(x=intday,"%d%b%Y")
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Day",title=ptitle) +
+    scale_y_continuous(limits = c(0, 120)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+###
+###
+###
+getITSresultsMonth <- function(dat0,outcome,ptitle,intday="01Jan2024"){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Month + Level_Change + Slope_Change",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    corr=corAR1(form=~Triage_Begin_Month),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change),
+              model_CIs))
+  # save the CIs for display in graphs etc.
+  ####
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Month
+  
+  # for the graph we need the interruption time
+  int_time <- as.Date(x=intday,"%d%b%Y")
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Month",title=ptitle) +
+    scale_y_continuous(limits = c(0, 2200)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+
+
+
+
+
+###
+getITSresultsInf <- function(dat0,outcome,ptitle,intday="01Jan2024"){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change + influenza",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    corr=corAR1(form=~Triage_Begin_Day),
+                    #corr=corARMA(form=~Triage_Begin_Day,p=1,q=1),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  model_influenza <- REML_model$coefficients[5]
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change,
+                                  model_influenza),
+               model_CIs))
+  ###
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_influenza=model_influenza,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Day + model_influenza*dat0$influenza
+  
+  # for the graph we need the interruption time
+  int_time <- as.Date(x=intday,"%d%b%Y")
+
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Day",title=ptitle) +
+    scale_y_continuous(limits = c(0, 120)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+
+getITSresultsInfARMA11 <- function(dat0,outcome,ptitle){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change + influenza",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    #corr=corAR1(form=~Triage_Begin_Day),
+                    corr=corARMA(form=~Triage_Begin_Day,p=1,q=1),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  model_influenza <- REML_model$coefficients[5]
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change,
+                                  model_influenza),
+               model_CIs))
+  ###
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_influenza=model_influenza,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Day + model_influenza*dat0$influenza
+  
+  # for the graph we need the interruption time
+  int_time <- as.Date(x="01Jan2024","%d%b%Y")
+
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Day",title=ptitle) +
+    scale_y_continuous(limits = c(0, 120)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+
+
+
+getITSresultsInfAR2 <- function(dat0,outcome,ptitle){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change + influenza",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    #corr=corAR1(form=~Triage_Begin_Day),
+                    corr=corARMA(form=~Triage_Begin_Day,p=2,q=0),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  model_influenza <- REML_model$coefficients[5]
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change,
+                                  model_influenza),
+               model_CIs))
+  ###
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_influenza=model_influenza,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Day + model_influenza*dat0$influenza
+  
+  # for the graph we need the interruption time
+  int_time <- as.Date(x="01Jan2024","%d%b%Y")
+
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Day",title=ptitle) +
+    scale_y_continuous(limits = c(0, 120)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+
+###
+
+getnts <- function(dat0,ptitle){
+  est_n <- msmooth(dat0$n)
+  plot(dat0$Triage_Begin_Date,est_n$orig,type="l",col="gray",
+       las=1,lwd=1,
+       main=str_c("Nonparametric Time Series Trend Estimation\n",ptitle),
+       ylab="Number of Admissions per Day",
+       ylim=c(0,120),
+       xlim=c(as.Date(x="01Jan2022","%d%b%Y"),
+              as.Date(x="31Dec2025","%d%b%Y")),
+       xlab="Date")
+  points(dat0$Triage_Begin_Date,est_n$ye,type="l",col="black",lwd=2)
+  #points(cbest_n$np.estim$ye.ub,type="l",col="red",lwd=2)
+  #points(cbest_n$np.estim$upper,type="l",col="red",lwd=1)
+  #points(cbest_n$np.estim$lower,type="l",col="red",lwd=1)
+  abline(v=as.Date(x="01Jan2024","%d%b%Y"),lwd=2,lty=2)
+}
+```
+
+# How do I perform the ITSA as suggested by Korevaar et al.?
+
+```{r}
+#| echo: TRUE
+getITSresults(dat0=datall,outcome="n",ptitle="All data")
+```
+
+# How do I perform the ITSA accounting for influenza?
+
+```{r}
+#| echo: TRUE
+getITSresultsInf(dat0=datall,outcome="n",ptitle="All data")
+getITSresultsInf(dat0=datsem,outcome="n",ptitle="Men only")
+getITSresultsInf(dat0=datsef,outcome="n",ptitle="Women only")
+getITSresultsInf(dat0=datag12,outcome="n",ptitle="Age Category 1 and 2")
+getITSresultsInf(dat0=datag3,outcome="n",ptitle="Age Category 3")
+getITSresultsInf(dat0=datag4,outcome="n",ptitle="Age Category 4")
+getITSresultsInf(dat0=datag5,outcome="n",ptitle="Age Category 5")
+getITSresultsInf(dat0=datpr12,outcome="n",ptitle="Prio 1 and 2")
+getITSresultsInf(dat0=datpr3,outcome="n",ptitle="Prio 3")
+getITSresultsInf(dat0=datpr45,outcome="n",ptitle="Prio 4 and 5")
+getITSresultsInf(dat0=datwk,outcome="n",ptitle="Weekdays (Monday–Friday) only")
+getITSresultsInf(dat0=datss,outcome="n",ptitle="Weekends (Saturday–Sunday) only")
+```
+
+# How do I perform the ITSA accounting for influenze with different interruption dates?
+
+```{r}
+#| echo: TRUE
+getITSresultsInf(dat0=datalld,outcome="n",ptitle="All data",intday="01Dec2023")
+getITSresultsInf(dat0=datallf,outcome="n",ptitle="All data",intday="01Feb2024")
+getITSresultsInf(dat0=datall5,outcome="n",ptitle="All data",intday="01Jan2025")
+```
+
+# How do I perform the ITSA accounting for influenza using ARMA(1,1) and AR(2) errors?
+
+```{r}
+#| echo: TRUE
+getITSresultsInfARMA11(dat0=datall,outcome="n",ptitle="All data") # ARMA(1,1) - process
+getITSresultsInfAR2(dat0=datall,outcome="n",ptitle="All data") # ARMA(2,0) - process
+```
+
+# How do I perform the ITSA with Months?
+
+```{r}
+#| echo: TRUE
+getITSresultsMonth(dat0=datallm,outcome="n",ptitle="All data")
+```
+
+# How do I estimate the time series trend using the semiparametric model suggested by Feng et al.?
+
+```{r}
+#| echo: TRUE
+getnts(dat0=datall,ptitle="All data")
+getnts(dat0=datsem,ptitle="Men only")
+getnts(dat0=datsef,ptitle="Women only")
+getnts(dat0=datag12,ptitle="Age Categories 1 and 2")
+getnts(dat0=datag3,ptitle="Age Category 3")
+getnts(dat0=datag4,ptitle="Age Category 4")
+getnts(dat0=datag5,ptitle="Age Category 5")
+getnts(dat0=datpr12,ptitle="Prio 1 and 2")
+getnts(dat0=datpr3,ptitle="Prio 3")
+getnts(dat0=datpr45,ptitle="Prio 4 and 5")
+getnts(dat0=datwk,ptitle="Weekdays (Monday–Friday) only")
+getnts(dat0=datss,ptitle="Weekends (Saturday–Sunday) only")
+getnts(dat0=datop,ptitle="During PPHC opening hours only")
+getnts(dat0=datopn,ptitle="Outside PPHC opening hours only")
+```
