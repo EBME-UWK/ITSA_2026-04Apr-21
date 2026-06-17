@@ -1081,6 +1081,6 @@ getnts(dat0=datpr3,ptitle="Prio 3")
 getnts(dat0=datpr45,ptitle="Prio 4 and 5")
 getnts(dat0=datwk,ptitle="Weekdays (Monday–Friday) only")
 getnts(dat0=datss,ptitle="Weekends (Saturday–Sunday) only")
-getnts(dat0=datop,ptitle="During PPHC opening hours only")
-getnts(dat0=datopn,ptitle="Outside PPHC opening hours only")
+getnts(dat0=datop,ptitle="During PHCC opening hours only")
+getnts(dat0=datopn,ptitle="Outside PHCC opening hours only")
 ```
