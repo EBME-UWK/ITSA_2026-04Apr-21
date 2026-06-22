@@ -5,8 +5,8 @@ author: "Claus P. Nowak"
 date: now
 date-format: "D MMMM YYYY"
 format: 
-   pdf:
-     geometry: landscape
+ pdf:
+    geometry: landscape
  # docx
  # html:
  #   toc: true
@@ -22,12 +22,32 @@ format:
 
 <!-- Author:     CNowak -->
 
-<!-- Date:       19-Jun-2026 -->
+<!-- Date:       22-Jun-2026 -->
 
 <!-- Purpose:    Perform ITS analysis and nonparameteric regression as requested by Alexander Braun -->
 
 # Preliminary/Which data do I use?
 
+**Update 22-Jun-2026**. Based on the reviewers comments we received on 22 June 2026, i.e.,
+
+  -   Day-of-week effects: Daily data over four years will exhibit strong within-week perio-dicity (weekday vs. weekend admission volumes differ substantially). This is not mod-elled. Day-of-week fixed effects should be included, or the authors must justify their omission.
+  
+  -   Public holidays and the Christmas/New Year period: The interruption point (January 2024) coincides with a known seasonal peak in ED presentations (cited references 29 and 30). The influenza adjustment does not capture post-holiday effects. A holiday dummy should be considered.
+  
+  I have rerun the ITS regression analysis accounting for holiday and day of the week. To this end, Alexander Braun has sent me an Excel sheet `Feiertage_AT_Taggenau_2022_2025.xlsx`.
+  
+  $$ y_t = \beta_0 + \beta_1 t+\beta_2I_t+\beta_3(t-T)I_t + \beta_4F_t+ \beta_5H_t+\gamma_kWD_{k_t}+\varepsilon_t,$$
+  where
+  
+  -   $y_t$ is the number of hospital admissions at day $t=1,..,n$;
+  -   $T$ is the interruption day, in our case $T=731$,
+  -   $I_t$ is an indicator variable which takes 0 before the interruption, i.e., if $t < T$, and 1 otherwise,
+  -   $F_{t}$ is an indicator variable (whether the day is during influenza period (1=yes, 0=no))
+  -   $H_{t}$ is an indicator variable (whether the day is a public holiday in Austria (1=yes, 0=no))
+  -   $WD_{k_{t}}$ are six indicator variables $k=2,...,7$ (whether the day is a particular day of the week (Tuesday,...,Sunday; yes=1, no=0).
+  -   $\varepsilon_t$ are modelled as autocorrelated errors of order 1.
+
+  
 **Update 17-Jun-2026**. Based on the reviewer comments from 15 June 2026, we were asked to
   
   -   run the regression again excluding weekends as a robustness check
@@ -176,6 +196,11 @@ addVariables2 <- function(dat,intday="01Jan2024"){
            
 weekdaylevels <- c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
 
+holidays <- read_xlsx(str_c(filename,"Feiertage_AT_Taggenau_2022_2025.xlsx")) |>
+            mutate(Triage_Begin_Date=as_date(dmy(Datum)),
+                   Holiday=ifelse(Feiertag==TRUE,1,0)) |>
+            dplyr::select(Triage_Begin_Date,Holiday)
+
 dat00 <- read_xlsx(str_c(filename,"MTS Daten_2022-2025_complete.xlsx"),
                    range="A1:M84739",
                    sheet="Daten2022-2025") |>
@@ -188,7 +213,16 @@ dat00 <- read_xlsx(str_c(filename,"MTS Daten_2022-2025_complete.xlsx"),
                                        "Fr" = "Fri",
                                        "Sa" = "Sat",
                                        "So" = "Sun"),
-                  WD = fct_relevel(WD,weekdaylevels))
+                  WD = fct_relevel(WD,weekdaylevels),
+                  WD2 = ifelse(WD=="Tue",1,0),
+                  WD3 = ifelse(WD=="Wed",1,0),
+                  WD4 = ifelse(WD=="Thu",1,0),
+                  WD5 = ifelse(WD=="Fri",1,0),
+                  WD6 = ifelse(WD=="Sat",1,0),
+                  WD7 = ifelse(WD=="Sun",1,0)) |>
+          left_join(holidays,by="Triage_Begin_Date")
+           
+
 
 alldates <- dat00 |> group_by(Triage_Begin_Date,Day,Month,Year,
                               Week_Day) |>
@@ -431,6 +465,11 @@ datopn <-dat00 |>  filter(is.na(PVE_Open)) |>
          group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,WD) |>
          count() |> ungroup() |> addVariables() |>
          filter(Level_Change==1)
+
+##### Add analyses for reviewer comments from 22-Jun-2026 #####
+datnew <- dat00 |> 
+          group_by(Triage_Begin_Date,Day,Month,Year,Week_Day,Holiday,WD2,WD3,WD4,WD5,WD6,WD7) |>
+          count() |> ungroup() |> addVariables()
 ```
 
 ## Which function do I write to perform the segmented regression analysis as suggested by Korevaar et al.?
@@ -770,6 +809,149 @@ getITSresultsInf <- function(dat0,outcome,ptitle,intday="01Jan2024"){
   ITS_plot
 }
 
+
+getITSresultsNew <- function(dat0,outcome,ptitle,intday="01Jan2024"){
+  form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change + influenza + Holiday + WD2 + WD3 + WD4 + WD5 + WD6 + WD7",sep=""))
+  print(form)
+  REML_model <- gls(model=form,
+                    method="REML",
+                    corr=corAR1(form=~Triage_Begin_Day),
+                    #corr=corARMA(form=~Triage_Begin_Day,p=1,q=1),
+                    data=dat0
+  )
+  # print the results of the analysis to the console
+  print(summary(REML_model)) # display the parameter estimates
+  
+  # to save the parameter estimates:
+  # predicted values
+  model_estimates <- REML_model$fitted
+  # save the parameter estimates for display in graphs etc.
+  model_intercept <- REML_model$coefficients[1]
+  model_pre_slope <- REML_model$coefficients[2]
+  model_level_change <- REML_model$coefficients[3]
+  model_slope_change <- REML_model$coefficients[4]
+  model_influenza <- REML_model$coefficients[5]
+  model_holiday <- REML_model$coefficients[6]
+  model_WD2 <- REML_model$coefficients[7]
+  model_WD3 <- REML_model$coefficients[8]
+  model_WD4 <- REML_model$coefficients[9]
+  model_WD5 <- REML_model$coefficients[10]
+  model_WD6 <- REML_model$coefficients[11]
+  model_WD7 <- REML_model$coefficients[12]
+
+  # generate the confidence intervals
+  model_CIs <- confint(REML_model)
+  # display the confidence intervals in the console
+  print("Below are the model estimates together with their 95% confidence limits.")
+  print(cbind(`Point estimates`=c(model_intercept,
+                                  model_pre_slope,
+                                  model_level_change,
+                                  model_slope_change,
+                                  model_influenza,
+                                  model_holiday,
+                                  model_WD2,
+                                  model_WD3,
+                                  model_WD4,
+                                  model_WD5,
+                                  model_WD6,
+                                  model_WD7),
+               model_CIs))
+  ###
+  print("Below are the model estimates together with multiplicity adjusted p-values and confidence limits")
+  set.seed(12345)
+  REML_modelg <- glht(REML_model)
+  print(summary(REML_modelg))
+  print(confint(REML_modelg))
+  ## outputs Alex:
+  model_n   <- REML_model$dims$N
+  ss        <- summary(REML_model)
+  model_AIC <- ss$AIC
+  model_BIC <- ss$BIC
+  print("Below is the output requested by Alexander Braun")
+  print(round(t(data.frame(model_intercept=model_intercept,
+                model_pre_slope=model_pre_slope,
+                model_level_change=model_level_change,
+                model_slope_change=model_slope_change,
+                model_influenza=model_influenza,
+                model_holiday=model_holiday,
+                model_WD2=model_WD2,
+                model_WD3=model_WD3,
+                model_WD4=model_WD4,
+                model_WD5=model_WD5,
+                model_WD6=model_WD6,
+                model_WD7=model_WD7,
+                model_AIC=model_AIC,
+                model_BIC=model_BIC,
+                model_n=model_n)),5))
+  
+  #####################  
+  ### Create a plot ###
+  #####################
+  dat0$prediction <- predict(REML_model)
+  
+  # create the counterfactual data, recall this is what would have happened had there been no interruption
+  # and therefore is simple to generate by just using the intercept and pre_slope data
+  dat0$counterfactual <- model_intercept + model_pre_slope*dat0$Triage_Begin_Day + 
+                         model_influenza*dat0$influenza + model_holiday*dat0$Holiday + 
+                         model_WD2*dat0$WD2 +
+                         model_WD3*dat0$WD3 +
+                         model_WD4*dat0$WD4 +
+                         model_WD5*dat0$WD5 +
+                         model_WD6*dat0$WD6 +
+                         model_WD7*dat0$WD7
+  # for the graph we need the interruption time
+  int_time <- as.Date(x=intday,"%d%b%Y")
+
+  
+  # colourblind colour blue
+  myblue <- rgb(0,114,178,max=255,alpha=255)
+  myothe <- rgb(248,118,109,max=255,alpha=255)
+  
+  # legends can be tricky, I found this useful... https://stackoverflow.com/questions/17148679/construct-a-manual-legend-for-a-complicated-plot
+  # set the colours to be used
+  colors <- c("Trend lines"=myblue,"Counterfactual"=myblue,"Data points"=myblue)
+  # set the line types (the lty values) 
+  line_types <- c("Trend lines"=1,"Counterfactual"=2)
+  
+  # set up the plot
+  ITS_plot <- ggplot(data=dat0,aes(x=Triage_Begin_Date,y=!!sym(outcome))) +
+    # add the actual data points
+    geom_point(color="black", pch=1, size=1, stroke=1) +
+    # set the predicted line in the pre-interruption segment
+    geom_line(data=subset(dat0,Level_Change==0), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the predicted line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=prediction,color="Trend lines",linetype="Trend lines"), lwd=2) +
+    # set the counterfactual line in the post-interruption segment
+    geom_line(data=subset(dat0,Level_Change==1), aes(x=Triage_Begin_Date,y=counterfactual,color="Counterfactual",linetype="Counterfactual"), lwd=2) +
+    # add some labels to the axes
+    labs(x="Date",y="Number of Admissions per Day",title=ptitle) +
+    scale_y_continuous(limits = c(0, 120)) +
+    # set the colours to be used using the vector we set up above
+    scale_color_manual(name="Legend:",values=c(myothe,myblue)) +
+    # set up the line types using the vector we set up above
+    scale_linetype_manual(name="Legend:",values=line_types) +
+    # add a vertical line for the interruption time
+    geom_vline(xintercept=int_time, color="black", lty="dashed", lwd=2) +
+    theme(legend.position = "bottom",
+          #legend.background = element_rect(fill="white",linewidth=1,linetype="solid"),
+          #legend.title = element_text(size=15),
+          #legend.text = element_text(size=15),
+          #legend.key.width = unit(4,"cm"),
+          #legend.key = element_rect(colour=NA, fill=NA),
+          #panel.background = element_blank(),
+          #panel.grid.major = element_line(colour="gray"),
+          #axis.title.y = element_text(face="bold", size=20),
+          #axis.title.x = element_text(face="bold", size=20),
+          #plot.title = element_text(face="bold", size=20),
+          #axis.text.x=element_text(face="bold", size=15),
+          #axis.text.y=element_text(face="bold", size=15),
+    )
+  # show this plot in the plots window
+  ITS_plot
+}
+
+
+
 getITSresultsInfARMA11 <- function(dat0,outcome,ptitle){
   form <- formula(paste0(outcome, " ~ Triage_Begin_Day + Level_Change + Slope_Change + influenza",sep=""))
   print(form)
@@ -1039,6 +1221,14 @@ getITSresultsInf(dat0=datpr3,outcome="n",ptitle="Prio 3")
 getITSresultsInf(dat0=datpr45,outcome="n",ptitle="Prio 4 and 5")
 getITSresultsInf(dat0=datwk,outcome="n",ptitle="Weekdays (Monday–Friday) only")
 getITSresultsInf(dat0=datss,outcome="n",ptitle="Weekends (Saturday–Sunday) only")
+```
+
+
+# How do I perform the ITSA accounting for influenza, holidays, and day of the week?
+
+```{r}
+#| echo: TRUE
+getITSresultsNew(dat0=datnew,outcome="n",ptitle="All data")
 ```
 
 # How do I perform the ITSA accounting for influenze with different interruption dates?
